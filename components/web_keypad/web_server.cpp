@@ -8,6 +8,7 @@
 #include "esphome/core/util.h"
 #include "esphome/core/entity_base.h"
 #include "esphome/core/helpers.h"
+#include "esphome/core/alloc_helpers.h"
 
 #ifdef USE_WIFI
 #include "esphome/components/wifi/wifi_component.h"
@@ -229,10 +230,13 @@ void ev_handler_cb(struct mg_connection *c, int ev, void *ev_data) {
         }
 
 std::string WebServer::get_object_id(EntityBase * entity) {
-     const StringRef &name = entity->get_name();
  #if defined(USE_DSC_PANEL) || defined(USE_VISTA_PANEL)
-  //ESP_LOGD("test","checking  name: %s,hash: %d",entity->get_name().c_str(),entity->get_object_id_hash());
+  #if ESPHOME_VERSION_CODE < VERSION_CODE(2026, 8, 0)
   const char *  oid = alarm_panel::alarmPanelPtr->getIdType(entity->get_object_id_hash());
+
+  #else
+    const char *  oid = alarm_panel::alarmPanelPtr->getIdType(entity->get_entity_key());
+  #endif
   if (strcmp(oid,"") != 0)  return std::string(oid);
  #endif
  
@@ -240,9 +244,12 @@ std::string WebServer::get_object_id(EntityBase * entity) {
   return  entity->get_object_id();
   #else
   char object_id_buf[128];
-  return std::string(entity->get_object_id_to(object_id_buf));
+  entity->get_object_id_to(object_id_buf);
+  return std::string(object_id_buf);
   #endif
  }
+
+
 
 
        WebServer::WebServer()
@@ -425,7 +432,7 @@ void WebServer::loop()
     {
         char addr[30];
         snprintf(addr,30, "http://0.0.0.0:%d", port_);
-        ESP_LOGD(TAG, "Starting web server on %s:%d", network::get_use_address(), port_);
+     //   ESP_LOGD(TAG, "Starting web server on %s:%d", network::get_use_address(), port_); //fix 7.0
         struct mg_connection *c = mg_http_listen(&mgr, addr,&ev_handler_cb,this);
         firstrun_ = false;
         
@@ -450,7 +457,7 @@ void WebServer::on_log(uint8_t level, const char *tag, const char *message, size
 void WebServer::dump_config()
 {
     ESP_LOGCONFIG(TAG, "Web Server:");
-    ESP_LOGCONFIG(TAG, "  Address: %s:%u", network::get_use_address(), port_);
+   // ESP_LOGCONFIG(TAG, "  Address: %s:%u", network::get_use_address(), port_); //fix 7.0
 }
 float WebServer::get_setup_priority() const { return setup_priority::WIFI - 1.0f; }
 
@@ -2097,7 +2104,7 @@ std::string WebServer::binary_sensor_json(binary_sensor::BinarySensor *obj, bool
                     {
                         cl->is_authenticated=1;
                         entities_iterator_.begin(this->include_internal_); //ok authenticated so we can start sending data
-                        ESP_LOGD(TAG, "Set auth conn %d as authenticated", cl->id);
+                        ESP_LOGD(TAG, "Set auth conn %lu as authenticated", cl->id);
                         break;
                     }
                 }
@@ -2655,7 +2662,6 @@ std::string WebServer::binary_sensor_json(binary_sensor::BinarySensor *obj, bool
                 return;
             }
 
-
 #ifdef USE_WEBKEYPAD_ENCRYPTION
             std::string newdata;
             if (credentials_.crypt && strlen(data) > 0) {
@@ -2675,7 +2681,7 @@ std::string WebServer::binary_sensor_json(binary_sensor::BinarySensor *obj, bool
 
                 if (c->is_event && !c->is_closing)
                 {
-                   // printf("writing id:%d, size:%d, data: %s\n",c->id,c->send.len,old);
+                    //printf("writing id:%d, size:%d, data: %s\n",c->id,c->send.len,data);
                     // ESP_LOGD(TAG,"type=%s,len=%d,data=%s",type.c_str(),strlen(data),data);
                     if (id && reconnect)
                         mg_printf(c, FC("id: %d\r\nretry: %d\r\nevent: %s\r\ndata: %s\r\n\r\n"), id, reconnect, type, data);
@@ -2683,7 +2689,7 @@ std::string WebServer::binary_sensor_json(binary_sensor::BinarySensor *obj, bool
                         mg_printf(c, FC("event: %s\r\ndata: %s\r\n\r\n"), type, data);
 
                     if (c->send.len > 10000) {
-                        ESP_LOGD(TAG,"Non responsive event connection. Closing %d",c->id);
+                        ESP_LOGD(TAG,"Non responsive event connection. Closing %lu",c->id);
                         c->is_closing = 1; // dead connection. kill it.
                     }
                     continue;
@@ -3000,7 +3006,7 @@ std::string WebServer::binary_sensor_json(binary_sensor::BinarySensor *obj, bool
                     upl.received=0;
                     mg_iobuf_del(&c->recv, 0, hm->head.len); // Delete HTTP headers
                     c->pfn = NULL;                           // Silence HTTP protocol handler, we'll use MG_EV_READ
-                    ESP_LOGI(TAG,"Performing OTA update... file: %s, size: %d,expected: %d",upl.filename.c_str(),upl.filesize,upl.expected);
+                    ESP_LOGI(TAG,"Performing OTA update... file: %s, size: %lu,expected: %d",upl.filename.c_str(),upl.filesize,upl.expected);
                    
                 }
              }
@@ -3015,7 +3021,7 @@ std::string WebServer::binary_sensor_json(binary_sensor::BinarySensor *obj, bool
                 if ((upl.received + c->recv.len) >= upl.expected)
                 {
                     // Uploaded everything. Send response back
-                    ESP_LOGI(TAG,"OTA uploaded %lu bytes from file %s", upl.received + c->recv.len, ota_filename_.c_str());
+                    ESP_LOGI(TAG,"OTA uploaded %d bytes from file %s", upl.received + c->recv.len, ota_filename_.c_str());
                     mg_http_reply(c, 200, NULL, "%lu ok\n", upl.received);
                     handleUpload(upl.expected,( PlatformString) upl.filename, upl.received, c->recv.buf, c->recv.len, true);
                    // memset(us, 0, sizeof(*us)); // Cleanup upload state
@@ -3058,11 +3064,11 @@ std::string WebServer::binary_sensor_json(binary_sensor::BinarySensor *obj, bool
              }  
             else if (ev == MG_EV_CLOSE)
             {
-                ESP_LOGD(TAG, "Connection %d closed", c->id);
+                ESP_LOGD(TAG, "Connection %lu closed", c->id);
                 tokens_.erase(c->id);
 
 #if defined(ESP32)
-                ESP_LOGD(TAG, "Current Heap values: freeheap: %5d,minheap: %5d,maxfree:%5d\n", esp_get_free_heap_size(), esp_get_minimum_free_heap_size(), heap_caps_get_largest_free_block(8));
+                ESP_LOGD(TAG, "Current Heap values: freeheap: %5lu,minheap: %5lu,maxfree:%5u\n", esp_get_free_heap_size(), esp_get_minimum_free_heap_size(), heap_caps_get_largest_free_block(8));
 #endif
             }
             else if (ev == MG_EV_ACCEPT)
@@ -3084,9 +3090,9 @@ std::string WebServer::binary_sensor_json(binary_sensor::BinarySensor *obj, bool
                 c->is_sending=0;
                 c->is_ota=0;
                 c->is_event=0;
-                ESP_LOGD(TAG, "New connection %d accepted", c->id);
+                ESP_LOGD(TAG, "New connection %lu accepted", c->id);
 #if defined(ESP32)
-                ESP_LOGD(TAG, "Current Heap values: freeheap: %5d,minheap: %5d,maxfree:%5d\n", esp_get_free_heap_size(), esp_get_minimum_free_heap_size(), heap_caps_get_largest_free_block(8));
+                ESP_LOGD(TAG, "Current Heap values: freeheap: %5lu,minheap: %5lu,maxfree:%5u\n", esp_get_free_heap_size(), esp_get_minimum_free_heap_size(), heap_caps_get_largest_free_block(8));
 #endif
             }
 
@@ -3243,13 +3249,13 @@ std::string WebServer::binary_sensor_json(binary_sensor::BinarySensor *obj, bool
 
             } else if (ev == MG_EV_OPEN) {
 
-                ESP_LOGD(TAG,"New connection open with client id %d\n",c->id);
+                ESP_LOGD(TAG,"New connection open with client id %lu\n",c->id);
             } else if (ev == MG_EV_READ){
                 // ESP_LOGD(TAG,"reading from client %d,%d\n",c->fd,c->id);
             }
             else if (ev == MG_EV_ERROR)
             {
-                ESP_LOGE(TAG, "MG_EV_ERROR %lu %ld %s.", c->id, c->fd, (char *)ev_data);
+               // ESP_LOGE(TAG, "MG_EV_ERROR %lu %ld %s.", c->id, c->fd, (char *)ev_data); //fix 7.0
 
             }
            
@@ -3562,7 +3568,7 @@ std::string WebServer::binary_sensor_json(binary_sensor::BinarySensor *obj, bool
 //      ESP_LOGD(TAG, "OTA in progress: %0.1f%%", percentage);
 //    } else {
 
-      snprintf(buf,100,"OTA in progress: %" PRIu32 " bytes written of %d", this->ota_read_length_,upl.filesize);
+      snprintf(buf,100,"OTA in progress: %" PRIu32 " bytes written of %lu", this->ota_read_length_,upl.filesize);
      #ifdef ESP8266
       ESP_LOGD(TAG,"OTA in progress: %" PRIu32 " bytes written of %d", this->ota_read_length_,upl.filesize);
      #else
