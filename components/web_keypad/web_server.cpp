@@ -231,12 +231,9 @@ void ev_handler_cb(struct mg_connection *c, int ev, void *ev_data) {
 
 std::string WebServer::get_object_id(EntityBase * entity) {
  #if defined(USE_DSC_PANEL) || defined(USE_VISTA_PANEL)
-  #if ESPHOME_VERSION_CODE < VERSION_CODE(2026, 8, 0)
+
   const char *  oid = alarm_panel::alarmPanelPtr->getIdType(entity->get_object_id_hash());
 
-  #else
-    const char *  oid = alarm_panel::alarmPanelPtr->getIdType(entity->get_entity_key());
-  #endif
   if (strcmp(oid,"") != 0)  return std::string(oid);
  #endif
  
@@ -3196,7 +3193,7 @@ std::string WebServer::binary_sensor_json(binary_sensor::BinarySensor *obj, bool
                   //  mg_str *hdr = mg_http_get_header(hm, "Accept");
                     // if (hdr != NULL && mg_strstr(*hdr, mg_str("text/event-stream")) != NULL)  {
                     c->is_event=1;
-                    mg_printf(c, FC("HTTP/2 200 OK\r\nContent-Type: text/event-stream\r\nCache-Control: no-cache\r\nConnection: keep-alive\r\nAccess-Control-Allow-Origin: *\r\n\r\n"));
+                    mg_printf(c, FC("HTTP/1.1 200 OK\r\nContent-Type: text/event-stream\r\nCache-Control: no-cache\r\nConnection: keep-alive\r\nAccess-Control-Allow-Origin: *\r\n\r\n"));
                     c->send.c = c;
                     bool crypt = credentials_.crypt;
                     std::string enc;
